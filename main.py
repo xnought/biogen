@@ -52,8 +52,50 @@ class MHA(torch.nn.Module):
         return self.out(mha)  # project to d_out
 
 
+def gen_mlp(n_layers, d_out):
+    modules = []
+    for _ in range(n_layers):
+        modules.append(torch.nn.Linear(d_out, d_out))
+        modules.append(torch.nn.ReLU())
+    return torch.nn.Sequential(*modules)
+
+
+class TransformerBlock(torch.nn.Module):
+    def __init__(self, n_heads, d_seq_len, d_in, d_k, d_out, n_layers=2):
+        super().__init__()
+        self.mha = MHA(n_heads, d_seq_len, d_in, d_k, d_out)
+        self.mha_norm = torch.nn.LayerNorm((d_seq_len, d_out))
+
+        self.mlp = gen_mlp(n_layers, d_out)
+        self.mlp_norm = torch.nn.LayerNorm((d_seq_len, d_out))
+
+    def __call__(self, X):
+        X = self.mha_norm(X + self.mha(X))
+        X = self.mlp_norm(X + self.mlp(X))
+        return X
+
+
+class Transformer(torch.nn.Module):
+    def __init__(self, n_heads, d_seq_len, d_in, d_k, d_out, n_layers=2, n_blocks=5):
+        super().__init__()
+        pass
+        # self.blocks = [TransformerBlock(n_heads, d_seq_len, d_in, d_k, d_out, n_layers) for _ in n_blocks]
+
+
 def main():
-    print("Hello from biogen!")
+    torch.manual_seed(0)
+    B = 2
+    d_seq_len = 8
+    d_in = 3
+    d_k = 3
+    d_out = 3
+    X = torch.randn((B, d_seq_len, d_in))
+    print(X)
+
+    n_heads = 4
+    b = TransformerBlock(n_heads, d_seq_len, d_in, d_k, d_out)
+    print(b)
+    print(b(X))
 
 
 if __name__ == "__main__":
