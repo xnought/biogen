@@ -197,6 +197,7 @@ if __name__ == "__main__":
     from datasets import load_dataset
     import numpy as np
     import os
+    import pandas as pd
 
     print("Loading dataset")
     ds = load_dataset("laion/biorXiv_metadata")
@@ -206,19 +207,29 @@ if __name__ == "__main__":
     df = df.drop_duplicates("doi")
     print(f"df loaded with {len(df)} entries")
 
-    cache = "./data/bpe_32k_2.11.pickle"
+    bpe_cache = "./data/bpe_32k_2.11.pickle"
     bpe = BPE()
-    if os.path.exists(cache):
-        bpe.load(cache)
+    if os.path.exists(bpe_cache):
+        bpe.load(bpe_cache)
         print("Loaded BPE from cache")
     else:
         np.random.seed(0)
         print("Computing BPE")
         bpe.compute_bpe(train=df["parsed_title"].sample(32_000).tolist(), n_vocab=2**11, vocab=list(KEEP_CHARS))
-        bpe.save(cache)
+        bpe.save(bpe_cache)
 
+    print("Precomputing Tokens for training later")
     t = Tokenizer(bpe, ["<s>"])
-    e = t.encode(["<s>", "Hello World!", "<s>"])
-    print(e)
-    out = t.decode(e)
-    print(out)
+
+    df_cache = "./data/df_bpe_32k_2.11.parquet"
+    if os.path.exists(df_cache):
+        df = pd.read_parquet(df_cache)
+    else:
+        from pandarallel import pandarallel
+
+        pandarallel.initialize(progress_bar=True)
+        df["bpe_32k_2.11"] = df["title"].parallel_apply(lambda x: t.encode([x]))
+        df = df[["doi", "bpe_32k_2.11"]]
+        df.to_parquet(df_cache, index=False)
+
+    print(df["bpe_32k_2.11"].head())
