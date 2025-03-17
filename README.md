@@ -5,8 +5,8 @@
 **Roadmap**
 
 - [x] Implement attention https://arxiv.org/abs/1706.03762
-- [ ] Load data from https://huggingface.co/datasets/laion/biorXiv_metadata
-- [ ] tokenize data
+- [x] Load data from https://huggingface.co/datasets/laion/biorXiv_metadata
+- [x] tokenize data
 - [ ] Token embedder and position embedder
 - [ ] Overfit on one batch with a small model
 - [ ] Switch to FlashAttention
