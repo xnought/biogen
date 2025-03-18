@@ -1,6 +1,8 @@
 import re
 from tqdm import tqdm
 from collections import Counter
+from torch.utils.data import Dataset, DataLoader
+import numpy as np
 
 KEEP_CHARS = set(
     [
@@ -193,6 +195,34 @@ class Tokenizer:
         return "".join(bpe_x)
 
 
+class TitlesDataset:
+    def __init__(self, df, d_seq_len):
+        self.df: pd.DataFrame = df
+        self.d_seq_len = d_seq_len
+
+    def get_random_chunk(self, d: list[int]) -> tuple[list[int], list[int]]:
+        d = [0] + d + [1]  # 0 is <start>, 1 is <end>
+        if len(d) > self.d_seq_len:
+            i = np.random.randint(len(d) - self.d_seq_len)
+            x = d[i : i + self.d_seq_len]
+            y = d[i + 1 : i + self.d_seq_len + 1]
+            return x, y
+        else:
+            # pad up to the length and take entire thing
+            d = d + [2] * (self.d_seq_len - len(d) + 1)
+            x = d[0:-1]
+            y = d[1:]
+            return x, y
+
+    def get_random_batch(self, batch_size=128):
+        idxs = np.random.randint(len(self.df), size=batch_size)
+        batch_df = self.df.iloc[idxs]
+        out = batch_df["bpe_32k_2.11"].apply(lambda x: self.get_random_chunk(x.tolist()))
+        xs = out.apply(lambda x: x[0])
+        ys = out.apply(lambda x: x[1])
+        return np.vstack(xs.array), np.vstack(ys.array)
+
+
 if __name__ == "__main__":
     from datasets import load_dataset
     import numpy as np
@@ -233,3 +263,9 @@ if __name__ == "__main__":
         df.to_parquet(df_cache, index=False)
 
     print(df["bpe_32k_2.11"].head())
+    print(len(df["bpe_32k_2.11"].array))
+    np.random.seed(0)
+    ds = TitlesDataset(df, d_seq_len=32)
+    for i in range(100):
+        x, y = ds.get_random_batch(128)
+        print(x.shape, y.shape)
