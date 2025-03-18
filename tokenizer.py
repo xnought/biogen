@@ -201,7 +201,6 @@ class TitlesDataset:
         self.d_seq_len = d_seq_len
 
     def get_random_chunk(self, d: list[int]) -> tuple[list[int], list[int]]:
-        d = [0] + d + [1]  # 0 is <start>, 1 is <end>
         if len(d) > self.d_seq_len:
             i = np.random.randint(len(d) - self.d_seq_len)
             x = d[i : i + self.d_seq_len]
@@ -209,6 +208,7 @@ class TitlesDataset:
             return x, y
         else:
             # pad up to the length and take entire thing
+            # 2 refers to the padding token idx
             d = d + [2] * (self.d_seq_len - len(d) + 1)
             x = d[0:-1]
             y = d[1:]
@@ -245,11 +245,13 @@ if __name__ == "__main__":
     else:
         np.random.seed(0)
         print("Computing BPE")
-        bpe.compute_bpe(train=df["parsed_title"].sample(32_000).tolist(), n_vocab=2**11, vocab=list(KEEP_CHARS))
+        train = df["title"].sample(32_000).parallel_apply(lambda x: normalize(x, KEEP_CHARS))
+        bpe.compute_bpe(train=train.tolist(), n_vocab=2**11, vocab=list(KEEP_CHARS))
         bpe.save(bpe_cache)
 
     print("Precomputing Tokens for training later")
-    t = Tokenizer(bpe, ["<s>"])
+    # start, end, pad tokens
+    t = Tokenizer(bpe, special_tokens=["<s>", "<e>", "<p>"])
 
     df_cache = "./data/df_bpe_32k_2.11.parquet"
     if os.path.exists(df_cache):
@@ -258,7 +260,7 @@ if __name__ == "__main__":
         from pandarallel import pandarallel
 
         pandarallel.initialize(progress_bar=True)
-        df["bpe_32k_2.11"] = df["title"].parallel_apply(lambda x: t.encode([x]))
+        df["bpe_32k_2.11"] = df["title"].parallel_apply(lambda x: t.encode(["<s>", x, "<e>"]))
         df = df[["doi", "bpe_32k_2.11"]]
         df.to_parquet(df_cache, index=False)
 
