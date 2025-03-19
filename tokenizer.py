@@ -2,6 +2,7 @@ import re
 from tqdm import tqdm
 from collections import Counter
 import numpy as np
+import torch
 
 KEEP_CHARS = set(
     [
@@ -179,6 +180,10 @@ class Tokenizer:
         self.special_tokens = special_tokens
         self.t_to_i, self.i_to_t = vocab_to_idx_map(bpe.vocab, special_tokens)
 
+    @property
+    def vocab_len(self):
+        return len(self.special_tokens) + len(self.bpe.vocab)
+
     def encode(self, x: list[str]):
         result = []
         for s in x:
@@ -195,22 +200,21 @@ class Tokenizer:
 
 
 class TitlesDataset:
-    def __init__(self, df, d_seq_len, tok_key="bpe_32k_2.11"):
+    def __init__(self, df, tok_key="bpe_32k_2.11"):
         self.df: pd.DataFrame = df
-        self.d_seq_len = d_seq_len
         self.tok_key = tok_key
 
     def tokens_at_idx(self, i):
         return self.df.iloc[i][self.tok_key]
 
-    def get_random_chunk(self):
+    def get_random_chunk(self, d_seq_len):
         SEP = 0
         # add separator at the beginning
         chunk = [SEP]
         idxs = set()
         total = 0
         # Get enough instances that we exceed d_seq_len
-        while total < (self.d_seq_len):
+        while total < d_seq_len:
             # get random, but not seen yet
             i = np.random.randint(len(self.df))
             if i in idxs:
@@ -224,24 +228,32 @@ class TitlesDataset:
             total += len(r) + 1  # +1 since SEP appended
         return chunk
 
-    def get_random_chunk_within_d_seq_len(self):
-        c = self.get_random_chunk()
+    def get_random_chunk_within_d_seq_len(self, d_seq_len):
+        c = self.get_random_chunk(d_seq_len)
 
-        target_size = self.d_seq_len + 1
+        target_size = d_seq_len + 1
         # perfectly sized!
         if len(c) == target_size:
             return c[:-1], c[1:]
         elif len(c) > target_size:
             # if too long, pick a chunk within
-            i = np.random.randint(len(c) - self.d_seq_len)
-            return c[i : i + self.d_seq_len], c[i + 1 : i + self.d_seq_len + 1]
+            i = np.random.randint(len(c) - d_seq_len)
+            return c[i : i + d_seq_len], c[i + 1 : i + d_seq_len + 1]
         else:
             # Houston, we've got a problem
             raise Exception("Chunk should not be less than the target size")
 
-    def get_random_batch(self, batch_size=128):
-        chunks = [self.get_random_chunk_within_d_seq_len() for _ in range(batch_size)]
+    def get_random_batch(
+        self,
+        batch_size,
+        d_seq_len,
+    ):
+        chunks = [self.get_random_chunk_within_d_seq_len(d_seq_len) for _ in range(batch_size)]
         return np.vstack([c[0] for c in chunks]), np.vstack([c[1] for c in chunks])
+
+    def get_random_batch_tensor(self, batch_size, d_seq_len, device="cpu"):
+        chunks = [self.get_random_chunk_within_d_seq_len(d_seq_len) for _ in range(batch_size)]
+        return torch.tensor([c[0] for c in chunks], device=device), torch.tensor([c[1] for c in chunks], device=device)
 
 
 if __name__ == "__main__":
