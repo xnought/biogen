@@ -27,7 +27,6 @@ if __name__ == "__main__":
     d_k = 64
     d_out = 64
     n_heads = 2
-    batch_size = 32
     n_blocks = 2
     n_vocab = len(tokenizer.bpe.vocab) + len(tokenizer.special_tokens)
 
@@ -38,5 +37,7 @@ if __name__ == "__main__":
     model = model.to(DEVICE)
     print(model)
 
+    batch_size = 32
     X, Y = get_random_batch_tensor(ds, batch_size, DEVICE)
-    out = model(X)
+    loss, _ = model.train_step(X, Y)
+    print(loss)

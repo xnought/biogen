@@ -1,4 +1,5 @@
 import torch
+import torch.nn.functional as F
 
 
 def attn(Q, K, V, mask):
@@ -98,15 +99,39 @@ class TokenEmbeddings(torch.nn.Module):
 class Transformer(torch.nn.Module):
     def __init__(self, n_vocab, n_heads, d_seq_len, d_in, d_k, d_out, n_layers=2, n_blocks=5, dropout=0.1):
         super().__init__()
+
+        # Transformer model definition
         self.embed = TokenEmbeddings(n_vocab, d_in, d_seq_len)
         self.transformer_blocks = torch.nn.Sequential(
             *[TransformerBlock(n_heads, d_seq_len, d_in, d_k, d_out, n_layers, dropout) for _ in range(n_blocks)]
         )
         self.linear = torch.nn.Linear(d_out, n_vocab)
 
+        # save the input args possibly for later use or just to keep track
+        self.n_vocab = n_vocab
+
     def __call__(self, X):
-        # X starts out as (B, d_seq_len)
+        """Input X must be of shape (B, d_seq_len)"""
         X = self.embed(X)  # (B, d_seq_len, d_in)
         X = self.transformer_blocks(X)  # (B, d_seq_len, d_out)
         X = self.linear(X)  # (B, d_seq_len, n_vocab)
         return X
+
+    def generate(self, X):
+        """Given a history of tokens, generate the next token (batch of integers)"""
+        self.eval()
+        assert False, "TODO: implement"
+
+    def train_step(self, X: torch.Tensor, Y: torch.Tensor, train=True):
+        """One forward + loss computation given the data"""
+        assert X.shape == Y.shape, "X and Y must have the same shape"
+
+        self.train(mode=train)
+
+        logits = self(X)  # (B, d_seq_len, n_vocab)
+        probs = F.softmax(logits, dim=-1)  # (B, d_seq_len, n_vocab) where last dim are probs
+
+        # input (B*d_seq_len, n_vocab) cross entropy with Y (B*d_seq_len) where the int is between 0 to n_vocab
+        loss = F.cross_entropy(probs.view(-1, self.n_vocab), Y.view(-1))
+
+        return loss, probs
