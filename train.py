@@ -34,6 +34,10 @@ def test_performance(model: Transformer, test: TitlesDataset, iters: int, batch_
     return avg_loss / iters
 
 
+def save_model(model: torch.nn.Module, filepath: str):
+    torch.save(model.state_dict(), filepath)
+
+
 def train_model(
     model: Transformer,
     optim: torch.optim.Optimizer,
@@ -44,6 +48,7 @@ def train_model(
     batch_size: int = 64,
     d_seq_len: int = 32,
     device: torch.device = DEVICE,
+    checkpoints_every=100,
 ):
     perf_history = {"train_loss": [-1.0] * iters, "test_loss": [-1.0] * iters}
 
@@ -64,6 +69,9 @@ def train_model(
         perf_history["train_loss"][i] = train_loss
         perf_history["test_loss"][i] = test_loss
         print(f"ITER: {i + 1}/{iters}\tTRAIN: {train_loss}\tTEST: {test_loss}")
+
+        if i % checkpoints_every == 0:
+            save_model(model, "checkpoint.pth")
 
     return perf_history
 
@@ -121,5 +129,6 @@ if __name__ == "__main__":
         batch_size=train_config["batch_size"],
         d_seq_len=train_config["d_seq_len"],
         device=DEVICE,
+        checkpoints_every=20,
     )
     plot_performance(perf)
