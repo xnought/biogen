@@ -1,7 +1,6 @@
 import re
 from tqdm import tqdm
 from collections import Counter
-from torch.utils.data import Dataset, DataLoader
 import numpy as np
 
 KEEP_CHARS = set(
@@ -196,31 +195,53 @@ class Tokenizer:
 
 
 class TitlesDataset:
-    def __init__(self, df, d_seq_len):
+    def __init__(self, df, d_seq_len, tok_key="bpe_32k_2.11"):
         self.df: pd.DataFrame = df
         self.d_seq_len = d_seq_len
+        self.tok_key = tok_key
 
-    def get_random_chunk(self, d: list[int]) -> tuple[list[int], list[int]]:
-        if len(d) > self.d_seq_len:
-            i = np.random.randint(len(d) - self.d_seq_len)
-            x = d[i : i + self.d_seq_len]
-            y = d[i + 1 : i + self.d_seq_len + 1]
-            return x, y
+    def tokens_at_idx(self, i):
+        return self.df.iloc[i][self.tok_key]
+
+    def get_random_chunk(self):
+        SEP = 0
+        # add separator at the beginning
+        chunk = [SEP]
+        idxs = set()
+        total = 0
+        # Get enough instances that we exceed d_seq_len
+        while total < (self.d_seq_len):
+            # get random, but not seen yet
+            i = np.random.randint(len(self.df))
+            if i in idxs:
+                continue
+            idxs.add(i)
+
+            # add instance with seperator
+            r = self.tokens_at_idx(i)
+            chunk.extend(r)
+            chunk.append(SEP)
+            total += len(r) + 1  # +1 since SEP appended
+        return chunk
+
+    def get_random_chunk_within_d_seq_len(self):
+        c = self.get_random_chunk()
+
+        target_size = self.d_seq_len + 1
+        # perfectly sized!
+        if len(c) == target_size:
+            return c[:-1], c[1:]
+        elif len(c) > target_size:
+            # if too long, pick a chunk within
+            i = np.random.randint(len(c) - self.d_seq_len)
+            return c[i : i + self.d_seq_len], c[i + 1 : i + self.d_seq_len + 1]
         else:
-            # pad up to the length and take entire thing
-            # 2 refers to the padding token idx
-            d = d + [2] * (self.d_seq_len - len(d) + 1)
-            x = d[0:-1]
-            y = d[1:]
-            return x, y
+            # Houston, we've got a problem
+            raise Exception("Chunk should not be less than the target size")
 
     def get_random_batch(self, batch_size=128):
-        idxs = np.random.randint(len(self.df), size=batch_size)
-        batch_df = self.df.iloc[idxs]
-        out = batch_df["bpe_32k_2.11"].apply(lambda x: self.get_random_chunk(x.tolist()))
-        xs = out.apply(lambda x: x[0])
-        ys = out.apply(lambda x: x[1])
-        return np.vstack(xs.array), np.vstack(ys.array)
+        chunks = [self.get_random_chunk_within_d_seq_len() for _ in range(batch_size)]
+        return np.vstack([c[0] for c in chunks]), np.vstack([c[1] for c in chunks])
 
 
 if __name__ == "__main__":
@@ -250,8 +271,7 @@ if __name__ == "__main__":
         bpe.save(bpe_cache)
 
     print("Precomputing Tokens for training later")
-    # start, end, pad tokens
-    t = Tokenizer(bpe, special_tokens=["<s>", "<e>", "<p>"])
+    t = Tokenizer(bpe, special_tokens=["<sep>"])
 
     df_cache = "./data/df_bpe_32k_2.11.parquet"
     if os.path.exists(df_cache):
@@ -260,14 +280,12 @@ if __name__ == "__main__":
         from pandarallel import pandarallel
 
         pandarallel.initialize(progress_bar=True)
-        df["bpe_32k_2.11"] = df["title"].parallel_apply(lambda x: t.encode(["<s>", x, "<e>"]))
+        df["bpe_32k_2.11"] = df["title"].parallel_apply(lambda x: t.encode([x]))
         df = df[["doi", "bpe_32k_2.11"]]
         df.to_parquet(df_cache, index=False)
 
     print(df["bpe_32k_2.11"].head())
     print(len(df["bpe_32k_2.11"].array))
-    np.random.seed(0)
-    ds = TitlesDataset(df, d_seq_len=32)
-    for i in range(100):
-        x, y = ds.get_random_batch(128)
-        print(x.shape, y.shape)
+    ds = TitlesDataset(df, d_seq_len=64)
+    bx, by = ds.get_random_batch(32)
+    print(bx.shape, by.shape)

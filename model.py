@@ -80,23 +80,3 @@ class Transformer(torch.nn.Module):
         super().__init__()
         pass
         # self.blocks = [TransformerBlock(n_heads, d_seq_len, d_in, d_k, d_out, n_layers) for _ in n_blocks]
-
-
-def main():
-    torch.manual_seed(0)
-    B = 2
-    d_seq_len = 8
-    d_in = 3
-    d_k = 3
-    d_out = 3
-    X = torch.randn((B, d_seq_len, d_in))
-    print(X)
-
-    n_heads = 4
-    b = TransformerBlock(n_heads, d_seq_len, d_in, d_k, d_out)
-    print(b)
-    print(b(X))
-
-
-if __name__ == "__main__":
-    main()

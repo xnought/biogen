@@ -1,7 +1,7 @@
 all: run
 
 run: 
-	uv run main.py
+	uv run train.py
 
 tok:
 	uv run tokenizer.py
