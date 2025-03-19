@@ -295,9 +295,3 @@ if __name__ == "__main__":
         df["bpe_32k_2.11"] = df["title"].parallel_apply(lambda x: t.encode([x]))
         df = df[["doi", "bpe_32k_2.11"]]
         df.to_parquet(df_cache, index=False)
-
-    print(df["bpe_32k_2.11"].head())
-    print(len(df["bpe_32k_2.11"].array))
-    ds = TitlesDataset(df, d_seq_len=64)
-    bx, by = ds.get_random_batch(32)
-    print(bx.shape, by.shape)
