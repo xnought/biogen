@@ -61,22 +61,49 @@ def gen_mlp(n_layers, d_out):
 
 
 class TransformerBlock(torch.nn.Module):
-    def __init__(self, n_heads, d_seq_len, d_in, d_k, d_out, n_layers=2):
+    def __init__(self, n_heads, d_seq_len, d_in, d_k, d_out, n_layers=2, dropout=0.1):
         super().__init__()
         self.mha = MHA(n_heads, d_seq_len, d_in, d_k, d_out)
         self.mha_norm = torch.nn.LayerNorm((d_seq_len, d_out))
+        self.dropout_mha = torch.nn.Dropout(p=dropout)
 
         self.mlp = gen_mlp(n_layers, d_out)
         self.mlp_norm = torch.nn.LayerNorm((d_seq_len, d_out))
+        self.dropout_mlp = torch.nn.Dropout(p=dropout)
 
     def __call__(self, X):
         X = self.mha_norm(X + self.mha(X))
+        X = self.dropout_mha(X)
         X = self.mlp_norm(X + self.mlp(X))
+        X = self.dropout_mlp(X)
+        return X
+
+
+class TokenEmbeddings(torch.nn.Module):
+    def __init__(self, n_embd, n_dim, d_seq_len):
+        super().__init__()
+        self.tok_embd = torch.nn.Embedding(n_embd, n_dim)
+        # start out not using positions, only use if helpful! (hence 0)
+        self.pos_embd = torch.nn.Parameter(torch.zeros((d_seq_len, n_dim), requires_grad=True))
+
+    def __call__(self, X):
+        X = self.tok_embd(X)
+        X = X + self.pos_embd
         return X
 
 
 class Transformer(torch.nn.Module):
-    def __init__(self, n_heads, d_seq_len, d_in, d_k, d_out, n_layers=2, n_blocks=5):
+    def __init__(self, n_vocab, n_heads, d_seq_len, d_in, d_k, d_out, n_layers=2, n_blocks=5, dropout=0.1):
         super().__init__()
-        pass
-        # self.blocks = [TransformerBlock(n_heads, d_seq_len, d_in, d_k, d_out, n_layers) for _ in n_blocks]
+        self.embed = TokenEmbeddings(n_vocab, d_in, d_seq_len)
+        self.transformer_blocks = torch.nn.Sequential(
+            *[TransformerBlock(n_heads, d_seq_len, d_in, d_k, d_out, n_layers, dropout) for _ in range(n_blocks)]
+        )
+        self.linear = torch.nn.Linear(d_out, n_vocab)
+
+    def __call__(self, X):
+        # X starts out as (B, d_seq_len)
+        X = self.embed(X)  # (B, d_seq_len, d_in)
+        X = self.transformer_blocks(X)  # (B, d_seq_len, d_out)
+        X = self.linear(X)  # (B, d_seq_len, n_vocab)
+        return X
