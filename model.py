@@ -102,9 +102,7 @@ class Transformer(torch.nn.Module):
 
         # Transformer model definition
         self.embed = TokenEmbeddings(n_vocab, d_in, d_seq_len)
-        self.transformer_blocks = torch.nn.Sequential(
-            *[TransformerBlock(n_heads, d_seq_len, d_in, d_k, d_out, n_layers, dropout) for _ in range(n_blocks)]
-        )
+        self.transformer_blocks = [TransformerBlock(n_heads, d_seq_len, d_in, d_k, d_out, n_layers, dropout) for _ in range(n_blocks)]
         self.linear = torch.nn.Linear(d_out, n_vocab)
 
         # save the input args possibly for later use or just to keep track
@@ -113,7 +111,9 @@ class Transformer(torch.nn.Module):
     def __call__(self, X):
         """Input X must be of shape (B, d_seq_len)"""
         X = self.embed(X)  # (B, d_seq_len, d_in)
-        X = self.transformer_blocks(X)  # (B, d_seq_len, d_out)
+        for block in self.transformer_blocks:
+            # skip connection and transformer block
+            X = X + block(X)  # (B, d_seq_len, d_out)
         X = self.linear(X)  # (B, d_seq_len, n_vocab)
         return X
 
