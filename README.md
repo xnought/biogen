@@ -10,7 +10,7 @@
 - [x] Pytorch data loader
 - [x] Token embedder and position embedder
 - [ ] generate mode
-- [ ] Implement train step and eval step (Overfit on one batch with a small model)
+- [x] Implement train step and eval step (Overfit on one batch with a small model)
 - [ ] Train small v0 model on CPU
 - [ ] Scale up model and train v1 on Colab GPU
 - [ ] Scale up model and train v2 on multiple GPUs (TBD where, but likely Kaggle or Lambda)
