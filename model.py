@@ -42,16 +42,27 @@ class MHA(torch.nn.Module):
         self.V = MHLinear(n_heads, d_in, d_k)
         self.register_buffer(
             "causal_mask",
-            torch.triu(
-                torch.ones((d_seq_len, d_seq_len), requires_grad=False, dtype=torch.bool),
-                diagonal=1,
-            ),
+            torch.triu(torch.ones((d_seq_len, d_seq_len), requires_grad=False, dtype=torch.bool), diagonal=1),
         )
         self.out = torch.nn.Linear(n_heads * d_k, d_out, bias=False)
 
     def __call__(self, X):
         B, d_seq_len, d_in = X.shape
         mha = attn(Q=self.Q(X), K=self.K(X), V=self.V(X), mask=self.causal_mask)  # (B, n_heads, d_seq_len, d_k)
+        return self.out(mha)  # project to d_out
+
+
+class FlashMHA(torch.nn.Module):
+    def __init__(self, n_heads, d_seq_len, d_in, d_k, d_out):
+        super().__init__()
+        self.Q = MHLinear(n_heads, d_in, d_k)
+        self.K = MHLinear(n_heads, d_in, d_k)
+        self.V = MHLinear(n_heads, d_in, d_k)
+        self.out = torch.nn.Linear(n_heads * d_k, d_out, bias=False)
+
+    def __call__(self, X):
+        B, d_seq_len, d_in = X.shape
+        mha = F.scaled_dot_product_attention(self.Q(X), self.K(X), self.V(X), is_causal=True)
         mha = mha.transpose(1, 2).contiguous().view((B, d_seq_len, -1))  # (B, d_seq_len, n_heads*d_k)
         return self.out(mha)  # project to d_out
 
@@ -67,7 +78,7 @@ def gen_mlp(n_layers, d_out):
 class TransformerBlock(torch.nn.Module):
     def __init__(self, n_heads, d_seq_len, d_in, d_k, d_out, n_layers=2, dropout=0.1):
         super().__init__()
-        self.mha = MHA(n_heads, d_seq_len, d_in, d_k, d_out)
+        self.mha = FlashMHA(n_heads, d_seq_len, d_in, d_k, d_out)
         self.mha_norm = torch.nn.LayerNorm((d_seq_len, d_out))
         self.dropout_mha = torch.nn.Dropout(p=dropout)
 
@@ -107,6 +118,7 @@ class Transformer(torch.nn.Module):
 
         # save the input args possibly for later use or just to keep track
         self.n_vocab = n_vocab
+        self.d_seq_len = d_seq_len
 
     def __call__(self, X):
         """Input X must be of shape (B, d_seq_len)"""
@@ -117,10 +129,31 @@ class Transformer(torch.nn.Module):
         X = self.linear(X)  # (B, d_seq_len, n_vocab)
         return X
 
-    def generate(self, X):
-        """Given a history of tokens, generate the next token (batch of integers)"""
+    @torch.no_grad()
+    def generate(self, X, device):
         self.eval()
-        assert False, "TODO: implement"
+
+        # X needs to be of (d_seq_len)
+        # if not, pad to the d_seq_len
+        given_d_seq_len = len(X)
+        if given_d_seq_len < self.d_seq_len:
+            pad = torch.zeros((self.d_seq_len - given_d_seq_len), device=device, dtype=X.dtype)
+            X = torch.concat((X, pad))
+        elif given_d_seq_len > self.d_seq_len:
+            rest = given_d_seq_len - self.d_seq_len
+            X = X[rest:]
+            given_d_seq_len = self.d_seq_len
+
+        X = X.unsqueeze(0)  # (1, d_seq_len)
+        logits = self(X).squeeze()  # (d_seq_len, n_vocab)
+
+        # only look at the one we are trying to predict
+        logits = logits[given_d_seq_len - 1, :]  # (n_vocab)
+        probs = F.softmax(logits, dim=-1)
+        pred = torch.multinomial(probs, num_samples=1)
+
+        self.train()
+        return pred.cpu().item()
 
     def train_step(self, X: torch.Tensor, Y: torch.Tensor):
         """One forward + loss computation given the data"""

@@ -97,6 +97,39 @@ def load_datasets():
     return train, test
 
 
+def generate(string, model, tokenizer, num_gen=None, device="cpu", print=lambda x: x):
+    genned = 0
+    while True:
+        tokens = torch.tensor(tokenizer.encode(["<sep>", string]), device=device)
+        pred = model.generate(tokens, device=device)
+        genned += 1
+        if num_gen is None and pred == 0:
+            break
+        elif num_gen is not None and genned > num_gen:
+            break
+
+        string += tokenizer.decode([pred])
+        print(string)
+
+    return string
+
+
+def test_gen():
+    tokenizer = Tokenizer(BPE().load(BPE_PATH), special_tokens=["<sep>"])
+    model_config = dict(
+        d_seq_len=32,
+        d_in=64,
+        d_k=64,
+        d_out=64,
+        n_heads=2,
+        n_blocks=2,
+        n_vocab=tokenizer.vocab_len,
+    )
+    model = torch.compile(Transformer(**model_config)).to(DEVICE)
+    model.load_state_dict(torch.load("checkpoint.pth"))
+    print(generate("evidence for ", num_gen=100, model=model, tokenizer=tokenizer, device=DEVICE))
+
+
 if __name__ == "__main__":
     torch.manual_seed(0)
     np.random.seed(0)
@@ -112,13 +145,13 @@ if __name__ == "__main__":
         n_blocks=2,
         n_vocab=tokenizer.vocab_len,
     )
-    model = Transformer(**model_config)
-    model = torch.compile(model).to(DEVICE)
+    model = torch.compile(Transformer(**model_config)).to(DEVICE)
 
     train_config = dict(iters=100, test_iters=3, batch_size=32, lr=1e-3, d_seq_len=model_config["d_seq_len"])
+    train, test = load_datasets()
+
     print("TRAINING FOR ", train_config)
     optim = torch.optim.AdamW(model.parameters(), lr=train_config["lr"])
-    train, test = load_datasets()
     perf = train_model(
         model=model,
         optim=optim,
