@@ -122,11 +122,9 @@ class Transformer(torch.nn.Module):
         self.eval()
         assert False, "TODO: implement"
 
-    def train_step(self, X: torch.Tensor, Y: torch.Tensor, train=True):
+    def train_step(self, X: torch.Tensor, Y: torch.Tensor):
         """One forward + loss computation given the data"""
         assert X.shape == Y.shape, "X and Y must have the same shape"
-
-        self.train(mode=train)
 
         logits = self(X)  # (B, d_seq_len, n_vocab)
         probs = F.softmax(logits, dim=-1)  # (B, d_seq_len, n_vocab) where last dim are probs

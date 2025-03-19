@@ -13,6 +13,11 @@ def get_random_batch_tensor(ds, batch_size, device):
     return X, Y
 
 
+def df_split(df, percent_train=0.95) -> tuple[pd.DataFrame, pd.DataFrame]:
+    split_at = int(percent_train * len(df))
+    return df.iloc[:split_at], df.iloc[split_at:]
+
+
 if __name__ == "__main__":
     torch.manual_seed(0)
     np.random.seed(0)
@@ -30,14 +35,23 @@ if __name__ == "__main__":
     n_blocks = 2
     n_vocab = len(tokenizer.bpe.vocab) + len(tokenizer.special_tokens)
 
-    df = pd.read_parquet(DATASET_PATH)
-    ds = TitlesDataset(df, d_seq_len)
+    train_df, test_df = df_split(df=pd.read_parquet(DATASET_PATH), percent_train=0.95)
+    print("Split train", len(train_df), "vs test", len(test_df))
+    train = TitlesDataset(train_df, d_seq_len)
+    test = TitlesDataset(test_df, d_seq_len)
 
     model = Transformer(n_vocab=n_vocab, n_heads=n_heads, d_seq_len=d_seq_len, d_in=d_in, d_k=d_k, d_out=d_out, n_blocks=n_blocks)
     model = model.to(DEVICE)
     print(model)
 
     batch_size = 32
-    X, Y = get_random_batch_tensor(ds, batch_size, DEVICE)
+    X, Y = get_random_batch_tensor(train, batch_size, DEVICE)
+    model.train()
     loss, _ = model.train_step(X, Y)
-    print(loss)
+    print(loss.item())
+
+    with torch.no_grad():
+        X, Y = get_random_batch_tensor(test, batch_size, DEVICE)
+        model.eval()
+        loss, _ = model.train_step(X, Y)
+        print(loss.item())
