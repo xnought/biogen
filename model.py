@@ -39,11 +39,13 @@ class MHA(torch.nn.Module):
         self.Q = MHLinear(n_heads, d_in, d_k)
         self.K = MHLinear(n_heads, d_in, d_k)
         self.V = MHLinear(n_heads, d_in, d_k)
-        causal_mask = torch.triu(
-            torch.ones((d_seq_len, d_seq_len), requires_grad=False, dtype=torch.bool),
-            diagonal=1,
+        self.register_buffer(
+            "causal_mask",
+            torch.triu(
+                torch.ones((d_seq_len, d_seq_len), requires_grad=False, dtype=torch.bool),
+                diagonal=1,
+            ),
         )
-        self.register_buffer("causal_mask", causal_mask)
         self.out = torch.nn.Linear(n_heads * d_k, d_out, bias=False)
 
     def __call__(self, X):
